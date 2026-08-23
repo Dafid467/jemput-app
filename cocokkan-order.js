@@ -57,6 +57,10 @@ async function cocokkanOrder() {
 async function main() {
   await signInWithEmailAndPassword(auth, process.env.SYSTEM_EMAIL, process.env.SYSTEM_PASSWORD);
   await cocokkanOrder();
+  process.exit(0);
 }
 
-main();
+main().catch((err) => {
+  console.error("Terjadi error:", err.message);
+  process.exit(1);
+});
