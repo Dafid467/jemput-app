@@ -25,9 +25,9 @@ const firebaseConfig = {
   messagingSenderId: "229069926763",
   appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const auth = firebase.auth();
+const secondaryApp = firebase.initializeApp(firebaseConfig, "penumpangApp");
+const db = secondaryApp.firestore();
+const auth = secondaryApp.auth();
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
