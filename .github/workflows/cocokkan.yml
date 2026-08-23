@@ -15,3 +15,6 @@ jobs:
           node-version: 20
       - run: npm install firebase
       - run: node cocokkan-order.js
+        env:
+          SYSTEM_EMAIL: ${{ secrets.SYSTEM_EMAIL }}
+          SYSTEM_PASSWORD: ${{ secrets.SYSTEM_PASSWORD }}
