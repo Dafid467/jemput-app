@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jemput Driver - Live</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+</head>
+<body class="bg-[#F3F6F4]">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCSn_E5myNF4uo0O1LJDKj5FHRJiDt0fAc",
+  authDomain: "jemput-93fd0.firebaseapp.com",
+  projectId: "jemput-93fd0",
+  storageBucket: "jemput-93fd0.appspot.com",
+  messagingSenderId: "229069926763",
+  appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const login = async () => {
+    setError("");
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (e) {
+      setError("Login gagal: " + e.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E4EAE6] p-5">
+        <p className="text-lg font-black text-[#0E2A1E] mb-4">Login Driver</p>
+        <p className="text-xs font-bold text-[#6B7280] mb-1">EMAIL</p>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        <p className="text-xs font-bold text-[#6B7280] mb-1">PASSWORD</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        {error && <p className="text-xs text-[#FF7A1A] mb-3">{error}</p>}
+        <button onClick={login} className="w-full py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">
+          Login
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(undefined); // undefined = belum tahu, null = belum login
+  const [driverId, setDriverId] = useState(null);
+  const [isOnline, setIsOnline] = useState(false);
+  const [incomingOrder, setIncomingOrder] = useState(null);
+  const [activeTrip, setActiveTrip] = useState(null);
+
+  // Pantau status login
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  // Kalau sudah login, cari dokumen driver yang uid-nya cocok
+  useEffect(() => {
+    if (!user) return;
+    db.collection("drivers").where("uid", "==", user.uid).limit(1).get().then((snap) => {
+      if (!snap.empty) setDriverId(snap.docs[0].id);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!isOnline || !driverId) return;
+    const unsub = db.collection("orders")
+      .where("status", "==", "searching")
+      .onSnapshot((snapshot) => {
+        if (!activeTrip && !incomingOrder) {
+          const first = snapshot.docs[0];
+          if (first) setIncomingOrder({ id: first.id, ...first.data() });
+        }
+      });
+    return () => unsub();
+  }, [isOnline, activeTrip, incomingOrder, driverId]);
+
+  const toggleOnline = async () => {
+    const next = !isOnline;
+    setIsOnline(next);
+    await db.collection("drivers").doc(driverId).update({ isOnline: next });
+  };
+
+  const acceptOrder = async () => {
+    await db.collection("orders").doc(incomingOrder.id).update({
+      status: "matched",
+      driverId: driverId,
+    });
+    await db.collection("drivers").doc(driverId).update({ isOnline: false });
+    setActiveTrip({ ...incomingOrder, stage: "toPickup" });
+    setIncomingOrder(null);
+  };
+
+  const declineOrder = () => setIncomingOrder(null);
+
+  const advanceTrip = async () => {
+    if (activeTrip.stage === "toPickup") {
+      setActiveTrip({ ...activeTrip, stage: "onTrip" });
+      await db.collection("orders").doc(activeTrip.id).update({ status: "onTrip" });
+    } else {
+      await db.collection("orders").doc(activeTrip.id).update({ status: "completed" });
+      await db.collection("drivers").doc(driverId).update({ isOnline: true });
+      setActiveTrip(null);
+    }
+  };
+
+  const logout = () => auth.signOut();
+
+  if (user === undefined) {
+    return <p className="text-center py-20 text-[#6B7280]">Memuat...</p>;
+  }
+  if (!user) {
+    return <LoginScreen />;
+  }
+  if (!driverId) {
+    return <p className="text-center py-20 text-[#6B7280]">Akun ini belum terhubung ke data driver manapun.</p>;
+  }
+
+  return (
+    <div className="min-h-screen flex items-start justify-center py-6 px-3">
+      <div className="w-full max-w-sm bg-[#F3F6F4] rounded-[2rem] shadow-xl overflow-hidden border border-[#E4EAE6]">
+        <div className="bg-[#0E2A1E] text-white px-5 pt-5 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? "bg-[#0FA968]" : "bg-white/30"}`}></div>
+            <span className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleOnline} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isOnline ? "bg-white/10" : "bg-[#0FA968]"}`}>
+              {isOnline ? "Matikan" : "Mulai Narik"}
+            </button>
+            <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              Keluar
+            </button>
+          </div>
+        </div>
+
+        <div className="px-4 py-4 min-h-[380px]">
+          {activeTrip ? (
+            <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+              <p className="text-xs font-bold text-[#0FA968] mb-2">
+                {activeTrip.stage === "toPickup" ? "Menuju penjemputan" : "Mengantar penumpang"}
+              </p>
+              <p className="text-sm text-[#0E2A1E]">Jemput: {activeTrip.pickup}</p>
+              <p className="text-sm text-[#0E2A1E] mt-1">Tujuan: {activeTrip.destination}</p>
+              <p className="text-sm font-black text-[#0E2A1E] mt-2">{rupiah(activeTrip.fare)}</p>
+              <button onClick={advanceTrip} className="w-full mt-4 py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">
+                {activeTrip.stage === "toPickup" ? "Sudah sampai lokasi jemput" : "Selesaikan pesanan"}
+              </button>
+            </div>
+          ) : incomingOrder ? (
+            <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+              <p className="text-xs font-bold text-[#FF7A1A] mb-2">PESANAN MASUK</p>
+              <p className="text-sm text-[#0E2A1E]">Jemput: {incomingOrder.pickup}</p>
+              <p className="text-sm text-[#0E2A1E] mt-1">Tujuan: {incomingOrder.destination}</p>
+              <p className="text-sm font-black text-[#0E2A1E] mt-2">{rupiah(incomingOrder.fare)}</p>
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <button onClick={declineOrder} className="py-3 rounded-xl border border-[#E4EAE6] font-bold text-sm">Tolak</button>
+                <button onClick={acceptOrder} className="py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">Terima</button>
+              </div>
+            </div>
+          ) : isOnline ? (
+            <p className="text-center text-[#6B7280] py-16">Menunggu order...</p>
+          ) : (
+            <p className="text-center text-[#6B7280] py-16">Tekan "Mulai Narik" untuk online</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

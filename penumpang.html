@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jemput Penumpang - Live</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+</head>
+<body class="bg-[#F3F6F4]">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCSn_E5myNF4uo0O1LJDKj5FHRJiDt0fAc",
+  authDomain: "jemput-93fd0.firebaseapp.com",
+  projectId: "jemput-93fd0",
+  storageBucket: "jemput-93fd0.appspot.com",
+  messagingSenderId: "229069926763",
+  appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
+
+function AuthScreen() {
+  const [mode, setMode] = useState("login"); // "login" atau "daftar"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    try {
+      if (mode === "login") {
+        await auth.signInWithEmailAndPassword(email, password);
+      } else {
+        await auth.createUserWithEmailAndPassword(email, password);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E4EAE6] p-5">
+        <p className="text-lg font-black text-[#0E2A1E] mb-1">
+          {mode === "login" ? "Login Penumpang" : "Daftar Akun Baru"}
+        </p>
+        <p className="text-xs text-[#6B7280] mb-4">Jemput Penumpang</p>
+
+        <p className="text-xs font-bold text-[#6B7280] mb-1">EMAIL</p>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        <p className="text-xs font-bold text-[#6B7280] mb-1">PASSWORD</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        {error && <p className="text-xs text-[#FF7A1A] mb-3">{error}</p>}
+
+        <button onClick={submit} className="w-full py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">
+          {mode === "login" ? "Login" : "Daftar"}
+        </button>
+
+        <button
+          onClick={() => setMode(mode === "login" ? "daftar" : "login")}
+          className="w-full mt-3 text-xs text-[#6B7280] font-semibold"
+        >
+          {mode === "login" ? "Belum punya akun? Daftar di sini" : "Sudah punya akun? Login di sini"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(undefined);
+  const [pickup, setPickup] = useState("Kos Griya Mangli, Jl. Mangli Indah No. 8");
+  const [dest, setDest] = useState("");
+  const [orderId, setOrderId] = useState(null);
+  const [order, setOrder] = useState(null);
+  const [driverName, setDriverName] = useState("");
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!orderId) return;
+    const unsub = db.collection("orders").doc(orderId).onSnapshot(async (docSnap) => {
+      const data = docSnap.data();
+      setOrder(data);
+      if (data && data.driverId) {
+        const driverDoc = await db.collection("drivers").doc(data.driverId).get();
+        if (driverDoc.exists) setDriverName(driverDoc.data().name);
+      }
+    });
+    return () => unsub();
+  }, [orderId]);
+
+  const pesanRide = async () => {
+    const fare = 15000;
+    const docRef = await db.collection("orders").add({
+      type: "ride",
+      pickup,
+      destination: dest,
+      fare,
+      status: "searching",
+      driverId: null,
+      passengerId: user.uid,
+      passengerEmail: user.email,
+    });
+    setOrderId(docRef.id);
+  };
+
+  const pesanLagi = () => {
+    setOrderId(null);
+    setOrder(null);
+    setDriverName("");
+    setDest("");
+  };
+
+  const logout = () => auth.signOut();
+
+  if (user === undefined) {
+    return <p className="text-center py-20 text-[#6B7280]">Memuat...</p>;
+  }
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <div className="min-h-screen flex items-start justify-center py-6 px-3">
+      <div className="w-full max-w-sm bg-[#F3F6F4] rounded-[2rem] shadow-xl overflow-hidden border border-[#E4EAE6]">
+        <div className="bg-[#0E2A1E] text-white px-5 pt-5 pb-4 flex items-center justify-between">
+          <div>
+            <p className="text-lg font-black">Jemput Penumpang</p>
+            <p className="text-[11px] text-white/60">{user.email}</p>
+          </div>
+          <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+            Keluar
+          </button>
+        </div>
+
+        <div className="px-4 py-4 min-h-[380px]">
+          {!orderId ? (
+            <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+              <p className="text-xs font-bold text-[#6B7280] mb-1">JEMPUT DARI</p>
+              <input
+                value={pickup}
+                onChange={(e) => setPickup(e.target.value)}
+                className="w-full text-sm text-[#0E2A1E] outline-none border-b border-[#E4EAE6] pb-2 mb-3"
+              />
+              <p className="text-xs font-bold text-[#6B7280] mb-1">MAU KE MANA?</p>
+              <input
+                value={dest}
+                onChange={(e) => setDest(e.target.value)}
+                placeholder="Tulis alamat tujuan"
+                className="w-full text-sm text-[#0E2A1E] outline-none"
+              />
+              <button
+                onClick={pesanRide}
+                disabled={!dest.trim()}
+                className="w-full mt-4 py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm disabled:bg-[#E4EAE6] disabled:text-[#9AA5A0]"
+              >
+                Pesan Jemput ({rupiah(15000)})
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+              {order && order.status === "searching" && (
+                <p className="text-sm font-bold text-[#0E2A1E]">Mencari driver terdekat...</p>
+              )}
+              {order && order.status === "matched" && (
+                <div>
+                  <p className="text-xs font-bold text-[#0FA968] mb-2">DRIVER DITEMUKAN</p>
+                  <p className="text-sm text-[#0E2A1E]">{driverName || "Memuat nama driver..."}</p>
+                  <p className="text-sm text-[#6B7280] mt-1">Menuju lokasi jemputmu</p>
+                </div>
+              )}
+              {order && order.status === "onTrip" && (
+                <p className="text-sm font-bold text-[#0E2A1E]">Sedang mengantarmu ke tujuan...</p>
+              )}
+              {order && order.status === "completed" && (
+                <div>
+                  <p className="text-sm font-bold text-[#0FA968]">Perjalanan selesai!</p>
+                  <button
+                    onClick={pesanLagi}
+                    className="w-full mt-4 py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm"
+                  >
+                    Pesan Lagi
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-[#6B7280] mt-4">Tujuan: {dest}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
