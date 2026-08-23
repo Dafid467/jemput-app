@@ -1,4 +1,5 @@
 const { initializeApp } = require("firebase/app");
+const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
 const {
   getFirestore,
   collection,
@@ -19,6 +20,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 
 async function cocokkanOrder() {
@@ -52,4 +54,9 @@ async function cocokkanOrder() {
   }
 }
 
-cocokkanOrder();
+async function main() {
+  await signInWithEmailAndPassword(auth, process.env.SYSTEM_EMAIL, process.env.SYSTEM_PASSWORD);
+  await cocokkanOrder();
+}
+
+main();
