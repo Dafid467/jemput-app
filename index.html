@@ -72,19 +72,18 @@ function LoginScreen() {
 }
 
 function App() {
-  const [user, setUser] = useState(undefined); // undefined = belum tahu, null = belum login
+  const [user, setUser] = useState(undefined);
   const [driverId, setDriverId] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
+  const [locStatus, setLocStatus] = useState("");
   const [incomingOrder, setIncomingOrder] = useState(null);
   const [activeTrip, setActiveTrip] = useState(null);
 
-  // Pantau status login
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setUser(u));
     return () => unsub();
   }, []);
 
-  // Kalau sudah login, cari dokumen driver yang uid-nya cocok
   useEffect(() => {
     if (!user) return;
     db.collection("drivers").where("uid", "==", user.uid).limit(1).get().then((snap) => {
@@ -105,10 +104,41 @@ function App() {
     return () => unsub();
   }, [isOnline, activeTrip, incomingOrder, driverId]);
 
+  const ambilLokasiLaluOnline = () => {
+    if (!navigator.geolocation) {
+      setLocStatus("HP ini tidak mendukung GPS. Online tanpa lokasi.");
+      db.collection("drivers").doc(driverId).update({ isOnline: true });
+      setIsOnline(true);
+      return;
+    }
+
+    setLocStatus("Mengambil lokasi GPS...");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await db.collection("drivers").doc(driverId).update({
+          isOnline: true,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setLocStatus("");
+        setIsOnline(true);
+      },
+      async (err) => {
+        setLocStatus("Gagal ambil lokasi: " + err.message + " (online tanpa lokasi)");
+        await db.collection("drivers").doc(driverId).update({ isOnline: true });
+        setIsOnline(true);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const toggleOnline = async () => {
-    const next = !isOnline;
-    setIsOnline(next);
-    await db.collection("drivers").doc(driverId).update({ isOnline: next });
+    if (isOnline) {
+      await db.collection("drivers").doc(driverId).update({ isOnline: false });
+      setIsOnline(false);
+    } else {
+      ambilLokasiLaluOnline();
+    }
   };
 
   const acceptOrder = async () => {
@@ -117,6 +147,7 @@ function App() {
       driverId: driverId,
     });
     await db.collection("drivers").doc(driverId).update({ isOnline: false });
+    setIsOnline(false);
     setActiveTrip({ ...incomingOrder, stage: "toPickup" });
     setIncomingOrder(null);
   };
@@ -163,6 +194,10 @@ function App() {
             </button>
           </div>
         </div>
+
+        {locStatus && (
+          <p className="text-[11px] text-[#FF7A1A] px-4 pt-2">{locStatus}</p>
+        )}
 
         <div className="px-4 py-4 min-h-[380px]">
           {activeTrip ? (
