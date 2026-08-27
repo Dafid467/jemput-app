@@ -31,6 +31,23 @@ const auth = firebase.auth();
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
+// ---- Komponen bintang rating ----
+function BintangRating({ onPilih }) {
+  return (
+    <div className="flex gap-2 justify-center my-3">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          onClick={() => onPilih(n)}
+          className="text-3xl leading-none active:scale-90 transition-transform"
+        >
+          ⭐
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,6 +95,7 @@ function App() {
   const [locStatus, setLocStatus] = useState("");
   const [incomingOrder, setIncomingOrder] = useState(null);
   const [activeTrip, setActiveTrip] = useState(null);
+  const [finishedTrip, setFinishedTrip] = useState(null); // trip yang baru selesai, nunggu di-rating
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setUser(u));
@@ -161,9 +179,24 @@ function App() {
     } else {
       await db.collection("orders").doc(activeTrip.id).update({ status: "completed" });
       await db.collection("drivers").doc(driverId).update({ isOnline: true });
+      setFinishedTrip(activeTrip); // simpan buat kasih rating, sebelum dihapus
       setActiveTrip(null);
     }
   };
+
+  // Driver kasih rating ke penumpang, setelah trip selesai
+  const beriRatingPenumpang = async (bintang) => {
+    await db.collection("orders").doc(finishedTrip.id).update({ ratingForPassenger: bintang });
+    if (finishedTrip.passengerId) {
+      await db.collection("passengers").doc(finishedTrip.passengerId).set({
+        totalRating: firebase.firestore.FieldValue.increment(bintang),
+        jumlahRating: firebase.firestore.FieldValue.increment(1),
+      }, { merge: true });
+    }
+    setFinishedTrip(null);
+  };
+
+  const lewatiRating = () => setFinishedTrip(null);
 
   const logout = () => auth.signOut();
 
@@ -200,7 +233,16 @@ function App() {
         )}
 
         <div className="px-4 py-4 min-h-[380px]">
-          {activeTrip ? (
+          {finishedTrip ? (
+            <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+              <p className="text-sm font-bold text-[#0FA968] mb-1">Trip selesai!</p>
+              <p className="text-xs text-[#6B7280] text-center mt-2">Beri rating untuk penumpang:</p>
+              <BintangRating onPilih={beriRatingPenumpang} />
+              <button onClick={lewatiRating} className="w-full mt-2 py-2 rounded-xl border border-[#E4EAE6] font-bold text-xs text-[#6B7280]">
+                Lewati
+              </button>
+            </div>
+          ) : activeTrip ? (
             <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
               <p className="text-xs font-bold text-[#0FA968] mb-2">
                 {activeTrip.stage === "toPickup" ? "Menuju penjemputan" : "Mengantar penumpang"}
