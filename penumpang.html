@@ -36,6 +36,7 @@ const auth = firebase.auth();
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
+// ---- Rumus jarak & harga (gratis, tanpa API) ----
 function hitungJarakKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -56,6 +57,24 @@ function hitungHarga(jarakKm) {
   return Math.round(harga / 500) * 500;
 }
 
+// ---- Komponen bintang rating ----
+function BintangRating({ onPilih }) {
+  return (
+    <div className="flex gap-2 justify-center my-3">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          onClick={() => onPilih(n)}
+          className="text-3xl leading-none active:scale-90 transition-transform"
+        >
+          ⭐
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Komponen peta pemilih lokasi ----
 function LocationPicker({ pickupCoord, destCoord, onPickupSet, onDestSet }) {
   const mapDivRef = useRef(null);
   const mapObjRef = useRef(null);
@@ -240,6 +259,17 @@ function App() {
     setOrderId(docRef.id);
   };
 
+  // Penumpang kasih rating ke driver setelah trip selesai
+  const beriRatingDriver = async (bintang) => {
+    await db.collection("orders").doc(orderId).update({ ratingForDriver: bintang });
+    if (order && order.driverId) {
+      await db.collection("drivers").doc(order.driverId).update({
+        totalRating: firebase.firestore.FieldValue.increment(bintang),
+        jumlahRating: firebase.firestore.FieldValue.increment(1),
+      });
+    }
+  };
+
   const pesanLagi = () => {
     setOrderId(null);
     setOrder(null);
@@ -328,10 +358,20 @@ function App() {
               )}
               {order && order.status === "completed" && (
                 <div>
-                  <p className="text-sm font-bold text-[#0FA968]">Perjalanan selesai!</p>
+                  <p className="text-sm font-bold text-[#0FA968] mb-1">Perjalanan selesai!</p>
+                  {!order.ratingForDriver ? (
+                    <div>
+                      <p className="text-xs text-[#6B7280] text-center">Beri rating untuk driver:</p>
+                      <BintangRating onPilih={beriRatingDriver} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[#0FA968] text-center my-3">
+                      Terima kasih sudah kasih rating! ({order.ratingForDriver} ⭐)
+                    </p>
+                  )}
                   <button
                     onClick={pesanLagi}
-                    className="w-full mt-4 py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm"
+                    className="w-full mt-2 py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm"
                   >
                     Pesan Lagi
                   </button>
