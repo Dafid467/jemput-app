@@ -185,13 +185,12 @@ function App() {
   };
 
   // Driver kasih rating ke penumpang, setelah trip selesai
+  // (untuk sekarang disimpan di data order saja, belum ada koleksi khusus penumpang)
   const beriRatingPenumpang = async (bintang) => {
-    await db.collection("orders").doc(finishedTrip.id).update({ ratingForPassenger: bintang });
-    if (finishedTrip.passengerId) {
-      await db.collection("passengers").doc(finishedTrip.passengerId).set({
-        totalRating: firebase.firestore.FieldValue.increment(bintang),
-        jumlahRating: firebase.firestore.FieldValue.increment(1),
-      }, { merge: true });
+    try {
+      await db.collection("orders").doc(finishedTrip.id).update({ ratingForPassenger: bintang });
+    } catch (err) {
+      alert("Gagal simpan rating: " + err.message);
     }
     setFinishedTrip(null);
   };
