@@ -31,6 +31,20 @@ const auth = firebase.auth();
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
+const formatTanggal = (ts) => {
+  if (!ts || !ts.toDate) return "-";
+  return ts.toDate().toLocaleDateString("id-ID", {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+};
+
+const labelStatus = (s) => ({
+  searching: "Mencari driver",
+  matched: "Driver ditemukan",
+  onTrip: "Dalam perjalanan",
+  completed: "Selesai",
+}[s] || s);
+
 // ---- Komponen bintang rating ----
 function BintangRating({ onPilih }) {
   return (
@@ -44,6 +58,43 @@ function BintangRating({ onPilih }) {
           ⭐
         </button>
       ))}
+    </div>
+  );
+}
+
+// ---- Komponen daftar riwayat ----
+function DaftarRiwayat({ list, loading, onKembali }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-bold text-[#0E2A1E]">Riwayat Perjalanan</p>
+        <button onClick={onKembali} className="text-xs font-bold text-[#0FA968]">Kembali</button>
+      </div>
+      {loading ? (
+        <p className="text-xs text-[#6B7280] text-center py-8">Memuat riwayat...</p>
+      ) : list.length === 0 ? (
+        <p className="text-xs text-[#6B7280] text-center py-8">Belum ada perjalanan.</p>
+      ) : (
+        <div className="max-h-[420px] overflow-y-auto">
+          {list.map((item) => (
+            <div key={item.id} className="border-b border-[#E4EAE6] py-3 last:border-0">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-[#0E2A1E]">{item.destination}</p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F3F6F4] text-[#6B7280]">
+                  {labelStatus(item.status)}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#6B7280] mt-0.5">{formatTanggal(item.waktuDibuat)}</p>
+              <p className="text-xs text-[#6B7280] mt-1">
+                {item.jarakKm ? item.jarakKm + " km" : ""} {item.fare ? "· " + rupiah(item.fare) : ""}
+              </p>
+              {item.ratingForPassenger && (
+                <p className="text-xs text-[#0FA968] mt-1">Rating kamu untuk penumpang: {item.ratingForPassenger} ⭐</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -95,7 +146,10 @@ function App() {
   const [locStatus, setLocStatus] = useState("");
   const [incomingOrder, setIncomingOrder] = useState(null);
   const [activeTrip, setActiveTrip] = useState(null);
-  const [finishedTrip, setFinishedTrip] = useState(null); // trip yang baru selesai, nunggu di-rating
+  const [finishedTrip, setFinishedTrip] = useState(null);
+  const [tampilanRiwayat, setTampilanRiwayat] = useState(false);
+  const [riwayat, setRiwayat] = useState([]);
+  const [loadingRiwayat, setLoadingRiwayat] = useState(false);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setUser(u));
@@ -179,13 +233,11 @@ function App() {
     } else {
       await db.collection("orders").doc(activeTrip.id).update({ status: "completed" });
       await db.collection("drivers").doc(driverId).update({ isOnline: true });
-      setFinishedTrip(activeTrip); // simpan buat kasih rating, sebelum dihapus
+      setFinishedTrip(activeTrip);
       setActiveTrip(null);
     }
   };
 
-  // Driver kasih rating ke penumpang, setelah trip selesai
-  // (untuk sekarang disimpan di data order saja, belum ada koleksi khusus penumpang)
   const beriRatingPenumpang = async (bintang) => {
     try {
       await db.collection("orders").doc(finishedTrip.id).update({ ratingForPassenger: bintang });
@@ -196,6 +248,24 @@ function App() {
   };
 
   const lewatiRating = () => setFinishedTrip(null);
+
+  const bukaRiwayat = async () => {
+    setTampilanRiwayat(true);
+    setLoadingRiwayat(true);
+    try {
+      const snap = await db.collection("orders").where("driverId", "==", driverId).get();
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      list.sort((a, b) => {
+        const ta = a.waktuDibuat && a.waktuDibuat.toMillis ? a.waktuDibuat.toMillis() : 0;
+        const tb = b.waktuDibuat && b.waktuDibuat.toMillis ? b.waktuDibuat.toMillis() : 0;
+        return tb - ta;
+      });
+      setRiwayat(list);
+    } catch (err) {
+      alert("Gagal ambil riwayat: " + err.message);
+    }
+    setLoadingRiwayat(false);
+  };
 
   const logout = () => auth.signOut();
 
@@ -221,6 +291,9 @@ function App() {
             <button onClick={toggleOnline} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isOnline ? "bg-white/10" : "bg-[#0FA968]"}`}>
               {isOnline ? "Matikan" : "Mulai Narik"}
             </button>
+            <button onClick={bukaRiwayat} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              Riwayat
+            </button>
             <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
               Keluar
             </button>
@@ -232,7 +305,9 @@ function App() {
         )}
 
         <div className="px-4 py-4 min-h-[380px]">
-          {finishedTrip ? (
+          {tampilanRiwayat ? (
+            <DaftarRiwayat list={riwayat} loading={loadingRiwayat} onKembali={() => setTampilanRiwayat(false)} />
+          ) : finishedTrip ? (
             <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
               <p className="text-sm font-bold text-[#0FA968] mb-1">Trip selesai!</p>
               <p className="text-xs text-[#6B7280] text-center mt-2">Beri rating untuk penumpang:</p>
