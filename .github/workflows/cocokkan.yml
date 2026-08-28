@@ -13,8 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install firebase
+      - run: npm install firebase firebase-admin
       - run: node cocokkan-order.js
         env:
           SYSTEM_EMAIL: ${{ secrets.SYSTEM_EMAIL }}
           SYSTEM_PASSWORD: ${{ secrets.SYSTEM_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
