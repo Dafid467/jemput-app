@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 </head>
 <body class="bg-[#F3F6F4]">
 <div id="root"></div>
@@ -28,6 +29,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+
+const VAPID_KEY = "BEYHE_JBvLd9WOcuJeFk70bvJa4ryU6N_A0duGvWHyakCQ1LqyWpckDB9FlZs14t-aRaf1IS6NNNIL6s9Jw5csg";
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
@@ -144,6 +147,7 @@ function App() {
   const [driverId, setDriverId] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
   const [locStatus, setLocStatus] = useState("");
+  const [notifStatus, setNotifStatus] = useState("");
   const [incomingOrder, setIncomingOrder] = useState(null);
   const [activeTrip, setActiveTrip] = useState(null);
   const [finishedTrip, setFinishedTrip] = useState(null);
@@ -210,6 +214,32 @@ function App() {
       setIsOnline(false);
     } else {
       ambilLokasiLaluOnline();
+    }
+  };
+
+  // Minta izin notifikasi, daftarkan HP ini ke Firebase, simpan token ke data driver
+  const aktifkanNotifikasi = async () => {
+    setNotifStatus("Memproses...");
+    try {
+      if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+        setNotifStatus("HP/browser ini tidak mendukung notifikasi.");
+        return;
+      }
+      const izin = await Notification.requestPermission();
+      if (izin !== "granted") {
+        setNotifStatus("Izin notifikasi ditolak. Coba aktifkan lewat pengaturan browser.");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/jemput-app/firebase-messaging-sw.js");
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({
+        vapidKey: VAPID_KEY,
+        serviceWorkerRegistration: reg,
+      });
+      await db.collection("drivers").doc(driverId).update({ fcmToken: token });
+      setNotifStatus("Notifikasi aktif ✅");
+    } catch (err) {
+      setNotifStatus("Gagal aktifkan notifikasi: " + err.message);
     }
   };
 
@@ -282,22 +312,28 @@ function App() {
   return (
     <div className="min-h-screen flex items-start justify-center py-6 px-3">
       <div className="w-full max-w-sm bg-[#F3F6F4] rounded-[2rem] shadow-xl overflow-hidden border border-[#E4EAE6]">
-        <div className="bg-[#0E2A1E] text-white px-5 pt-5 pb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? "bg-[#0FA968]" : "bg-white/30"}`}></div>
-            <span className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</span>
+        <div className="bg-[#0E2A1E] text-white px-5 pt-5 pb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? "bg-[#0FA968]" : "bg-white/30"}`}></div>
+              <span className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <button onClick={toggleOnline} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isOnline ? "bg-white/10" : "bg-[#0FA968]"}`}>
+                {isOnline ? "Matikan" : "Mulai Narik"}
+              </button>
+              <button onClick={aktifkanNotifikasi} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+                🔔
+              </button>
+              <button onClick={bukaRiwayat} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+                Riwayat
+              </button>
+              <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+                Keluar
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={toggleOnline} className={`px-3 py-1.5 rounded-full text-xs font-bold ${isOnline ? "bg-white/10" : "bg-[#0FA968]"}`}>
-              {isOnline ? "Matikan" : "Mulai Narik"}
-            </button>
-            <button onClick={bukaRiwayat} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
-              Riwayat
-            </button>
-            <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
-              Keluar
-            </button>
-          </div>
+          {notifStatus && <p className="text-[11px] text-white/70 mt-2">{notifStatus}</p>}
         </div>
 
         {locStatus && (
