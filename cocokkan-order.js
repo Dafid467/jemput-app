@@ -9,6 +9,7 @@ const {
   updateDoc,
   doc,
 } = require("firebase/firestore");
+const admin = require("firebase-admin");
 
 const firebaseConfig = {
   apiKey: "AIzaSyCSn_E5myNF4uo0O1LJDKj5FHRJiDt0fAc",
@@ -23,6 +24,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Setup terpisah untuk pengirim notifikasi (pakai Service Account, akses lebih tinggi)
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+// Rumus Haversine: hitung jarak (km) antara dua titik koordinat GPS
 function hitungJarakKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -37,6 +45,8 @@ function hitungJarakKm(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+// Cari driver online terdekat dari titik jemput order,
+// tapi lewati driver yang sudah kepasang ke order lain di run ini
 function cariDriverTerdekat(order, driverDocs, sudahDipakai) {
   let driverTerpilih = null;
   let jarakTerpendek = Infinity;
@@ -64,6 +74,26 @@ function cariDriverTerdekat(order, driverDocs, sudahDipakai) {
   }
 
   return driverTerpilih || cadangan;
+}
+
+// Kirim notifikasi push ke HP driver (kalau dia sudah aktifkan notifikasi)
+async function kirimNotifikasiDriver(driverData, order) {
+  if (!driverData.fcmToken) {
+    console.log("Driver belum aktifkan notifikasi, dilewati.");
+    return;
+  }
+  try {
+    await admin.messaging().send({
+      token: driverData.fcmToken,
+      notification: {
+        title: "Pesanan baru masuk!",
+        body: `Jemput: ${order.pickup} -> ${order.destination}`,
+      },
+    });
+    console.log("Notifikasi terkirim ke driver.");
+  } catch (err) {
+    console.log("Gagal kirim notifikasi: " + err.message);
+  }
 }
 
 async function cocokkanOrder() {
@@ -102,6 +132,8 @@ async function cocokkanOrder() {
 
     sudahDipakai.add(driverTerpilih.id);
     console.log(`Order ${orderDoc.id} dicocokkan dengan driver ${driverTerpilih.id} (terdekat).`);
+
+    await kirimNotifikasiDriver(driverTerpilih.data(), order);
   }
 }
 
