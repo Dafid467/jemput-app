@@ -26,9 +26,10 @@ const firebaseConfig = {
   messagingSenderId: "229069926763",
   appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const auth = firebase.auth();
+firebase.initializeApp(firebaseConfig, "driverApp");
+const app = firebase.app("driverApp");
+const db = app.firestore();
+const auth = app.auth();
 
 const VAPID_KEY = "BEYHE_JBvLd9WOcuJeFk70bvJa4ryU6N_A0duGvWHyakCQ1LqyWpckDB9FlZs14t-aRaf1IS6NNNIL6s9Jw5csg";
 
@@ -166,6 +167,15 @@ function App() {
       if (!snap.empty) setDriverId(snap.docs[0].id);
     });
   }, [user]);
+
+  // Kalau tab ini sempat dimuat ulang otomatis oleh HP, samakan status online
+  // dengan yang ada di database, bukan asal anggap offline
+  useEffect(() => {
+    if (!driverId) return;
+    db.collection("drivers").doc(driverId).get().then((snap) => {
+      if (snap.exists) setIsOnline(!!snap.data().isOnline);
+    });
+  }, [driverId]);
 
   useEffect(() => {
     if (!isOnline || !driverId) return;
