@@ -25,7 +25,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // Setup terpisah untuk pengirim notifikasi (pakai Service Account, akses lebih tinggi)
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+// Disimpan dalam bentuk base64 di GitHub Secrets supaya tidak rusak saat disalin manual
+const serviceAccountJson = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_B64, "base64").toString("utf-8");
+const serviceAccount = JSON.parse(serviceAccountJson);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
