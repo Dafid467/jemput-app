@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jemput Dashboard - CEO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+</head>
+<body class="bg-[#F3F6F4]">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCSn_E5myNF4uo0O1LJDKj5FHRJiDt0fAc",
+  authDomain: "jemput-93fd0.firebaseapp.com",
+  projectId: "jemput-93fd0",
+  storageBucket: "jemput-93fd0.appspot.com",
+  messagingSenderId: "229069926763",
+  appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
+
+const labelStatus = (s) => ({
+  searching: "Mencari driver",
+  matched: "Driver ditemukan",
+  onTrip: "Dalam perjalanan",
+  completed: "Selesai",
+}[s] || s);
+
+function isHariIni(ts) {
+  if (!ts || !ts.toDate) return false;
+  const d = ts.toDate();
+  const sekarang = new Date();
+  return d.getDate() === sekarang.getDate() &&
+    d.getMonth() === sekarang.getMonth() &&
+    d.getFullYear() === sekarang.getFullYear();
+}
+
+function KartuStatistik({ label, nilai, warna }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+      <p className="text-xs font-bold text-[#6B7280] mb-1">{label}</p>
+      <p className={"text-2xl font-black " + (warna || "text-[#0E2A1E]")}>{nilai}</p>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const login = async () => {
+    setError("");
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (e) {
+      setError("Login gagal: " + e.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E4EAE6] p-5">
+        <p className="text-lg font-black text-[#0E2A1E] mb-1">Dashboard CEO</p>
+        <p className="text-xs text-[#6B7280] mb-4">Login pakai akun kamu</p>
+        <p className="text-xs font-bold text-[#6B7280] mb-1">EMAIL</p>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        <p className="text-xs font-bold text-[#6B7280] mb-1">PASSWORD</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        {error && <p className="text-xs text-[#FF7A1A] mb-3">{error}</p>}
+        <button onClick={login} className="w-full py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">
+          Login
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(undefined);
+  const [loading, setLoading] = useState(false);
+  const [orderHariIni, setOrderHariIni] = useState([]);
+  const [driverOnline, setDriverOnline] = useState(0);
+  const [totalDriver, setTotalDriver] = useState(0);
+  const [errMsg, setErrMsg] = useState("");
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  const muatData = async () => {
+    setLoading(true);
+    setErrMsg("");
+    try {
+      const orderSnap = await db.collection("orders").get();
+      const semuaOrder = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const hariIni = semuaOrder.filter((o) => isHariIni(o.waktuDibuat));
+      setOrderHariIni(hariIni);
+
+      const driverSnap = await db.collection("drivers").get();
+      setTotalDriver(driverSnap.size);
+      setDriverOnline(driverSnap.docs.filter((d) => d.data().isOnline).length);
+    } catch (err) {
+      setErrMsg("Gagal muat data: " + err.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (user) muatData();
+  }, [user]);
+
+  const logout = () => auth.signOut();
+
+  if (user === undefined) {
+    return <p className="text-center py-20 text-[#6B7280]">Memuat...</p>;
+  }
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  const selesaiHariIni = orderHariIni.filter((o) => o.status === "completed");
+  const pendapatanHariIni = selesaiHariIni.reduce((total, o) => total + (o.fare || 0), 0);
+
+  return (
+    <div className="min-h-screen py-6 px-3">
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0E2A1E] text-white rounded-2xl px-5 py-4 mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-lg font-black">Dashboard Jemput</p>
+            <p className="text-[11px] text-white/60">{user.email}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={muatData} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              🔄 Refresh
+            </button>
+            <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              Keluar
+            </button>
+          </div>
+        </div>
+
+        {errMsg && <p className="text-xs text-[#FF7A1A] mb-3">{errMsg}</p>}
+        {loading && <p className="text-xs text-[#6B7280] mb-3">Memuat data...</p>}
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <KartuStatistik label="ORDER HARI INI" nilai={orderHariIni.length} />
+          <KartuStatistik label="SELESAI HARI INI" nilai={selesaiHariIni.length} warna="text-[#0FA968]" />
+          <KartuStatistik label="PENDAPATAN HARI INI" nilai={rupiah(pendapatanHariIni)} warna="text-[#0FA968]" />
+          <KartuStatistik label="DRIVER ONLINE" nilai={`${driverOnline} / ${totalDriver}`} />
+        </div>
+
+        <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+          <p className="text-sm font-bold text-[#0E2A1E] mb-3">Order Hari Ini</p>
+          {orderHariIni.length === 0 ? (
+            <p className="text-xs text-[#6B7280] text-center py-6">Belum ada order hari ini.</p>
+          ) : (
+            <div className="max-h-[400px] overflow-y-auto">
+              {orderHariIni.map((o) => (
+                <div key={o.id} className="border-b border-[#E4EAE6] py-2.5 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-[#0E2A1E]">{o.destination}</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F3F6F4] text-[#6B7280]">
+                      {labelStatus(o.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#6B7280] mt-0.5">
+                    {o.jarakKm ? o.jarakKm + " km" : ""} {o.fare ? "· " + rupiah(o.fare) : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
