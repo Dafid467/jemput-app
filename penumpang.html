@@ -30,9 +30,10 @@ const firebaseConfig = {
   messagingSenderId: "229069926763",
   appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const auth = firebase.auth();
+firebase.initializeApp(firebaseConfig, "penumpangApp");
+const app = firebase.app("penumpangApp");
+const db = app.firestore();
+const auth = app.auth();
 
 const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
@@ -99,7 +100,7 @@ function LocationPicker({ pickupCoord, destCoord, onPickupSet, onDestSet }) {
   modeRef.current = mode;
 
   useEffect(() => {
-    const map = L.map(mapDivRef.current).setView([-8.1312406, 113.2504063], 13);
+    const map = L.map(mapDivRef.current).setView([-8.1844, 113.6681], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19,
@@ -252,7 +253,7 @@ function AuthScreen() {
 
 function App() {
   const [user, setUser] = useState(undefined);
-  const [pickup, setPickup] = useState("Perum Puri Citra Village Blok B1, Boreng Lumajang");
+  const [pickup, setPickup] = useState("Kos Griya Mangli, Jl. Mangli Indah No. 8");
   const [dest, setDest] = useState("");
   const [pickupCoord, setPickupCoord] = useState(null);
   const [destCoord, setDestCoord] = useState(null);
