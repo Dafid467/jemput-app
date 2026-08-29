@@ -18,4 +18,4 @@ jobs:
         env:
           SYSTEM_EMAIL: ${{ secrets.SYSTEM_EMAIL }}
           SYSTEM_PASSWORD: ${{ secrets.SYSTEM_PASSWORD }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}
