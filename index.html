@@ -190,6 +190,25 @@ function App() {
     return () => unsub();
   }, [isOnline, activeTrip, incomingOrder, driverId]);
 
+  // Selalu cek: apakah saya lagi pegang order aktif (matched/onTrip)?
+  // Ini penting supaya order yang dicocokkan robot TIDAK "hilang" dari layar
+  // biarpun saya baru buka/refresh tab setelah pencocokan terjadi.
+  useEffect(() => {
+    if (!driverId) return;
+    const unsub = db.collection("orders")
+      .where("driverId", "==", driverId)
+      .onSnapshot((snapshot) => {
+        const aktif = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .find((o) => o.status === "matched" || o.status === "onTrip");
+        if (aktif) {
+          setActiveTrip({ ...aktif, stage: aktif.status === "onTrip" ? "onTrip" : "toPickup" });
+          setIncomingOrder(null);
+        }
+      });
+    return () => unsub();
+  }, [driverId]);
+
   const ambilLokasiLaluOnline = () => {
     if (!navigator.geolocation) {
       setLocStatus("HP ini tidak mendukung GPS. Online tanpa lokasi.");
@@ -241,7 +260,7 @@ function App() {
         return;
       }
       const reg = await navigator.serviceWorker.register("/jemput-app/firebase-messaging-sw.js");
-      const messaging = firebase.messaging();
+      const messaging = app.messaging();
       const token = await messaging.getToken({
         vapidKey: VAPID_KEY,
         serviceWorkerRegistration: reg,
