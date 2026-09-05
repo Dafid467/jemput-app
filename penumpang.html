@@ -89,6 +89,60 @@ function BintangRating({ onPilih }) {
   );
 }
 
+// ---- Komponen chat dengan driver ----
+function KotakChat({ pesanList, teksBaru, onTeksBerubah, onKirim }) {
+  const bawahRef = useRef(null);
+
+  useEffect(() => {
+    if (bawahRef.current) bawahRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [pesanList]);
+
+  return (
+    <div className="mt-4 border-t border-[#E4EAE6] pt-3">
+      <p className="text-xs font-bold text-[#6B7280] mb-2">Chat dengan Driver</p>
+      <div className="max-h-40 overflow-y-auto mb-2 bg-[#F3F6F4] rounded-xl p-2">
+        {pesanList.length === 0 ? (
+          <p className="text-xs text-[#6B7280] text-center py-2">Belum ada pesan.</p>
+        ) : (
+          pesanList.map((p) => (
+            <div
+              key={p.id}
+              className={"flex mb-1 " + (p.peranPengirim === "passenger" ? "justify-end" : "justify-start")}
+            >
+              <span
+                className={
+                  "text-xs px-3 py-1.5 rounded-2xl max-w-[75%] " +
+                  (p.peranPengirim === "passenger"
+                    ? "bg-[#0FA968] text-white"
+                    : "bg-white border border-[#E4EAE6] text-[#0E2A1E]")
+                }
+              >
+                {p.teks}
+              </span>
+            </div>
+          ))
+        )}
+        <div ref={bawahRef}></div>
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={teksBaru}
+          onChange={(e) => onTeksBerubah(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onKirim(); }}
+          placeholder="Tulis pesan..."
+          className="flex-1 text-sm border border-[#E4EAE6] rounded-full px-3 py-1.5 outline-none"
+        />
+        <button
+          onClick={onKirim}
+          className="px-4 py-1.5 rounded-full bg-[#0FA968] text-white text-xs font-bold"
+        >
+          Kirim
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Komponen peta pemilih lokasi ----
 function LocationPicker({ pickupCoord, destCoord, onPickupSet, onDestSet }) {
   const mapDivRef = useRef(null);
@@ -263,6 +317,8 @@ function App() {
   const [tampilanRiwayat, setTampilanRiwayat] = useState(false);
   const [riwayat, setRiwayat] = useState([]);
   const [loadingRiwayat, setLoadingRiwayat] = useState(false);
+  const [pesanList, setPesanList] = useState([]);
+  const [teksBaru, setTeksBaru] = useState("");
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setUser(u));
@@ -281,6 +337,32 @@ function App() {
     });
     return () => unsub();
   }, [orderId]);
+
+  // Dengarkan pesan chat begitu driver sudah ditemukan
+  useEffect(() => {
+    if (!orderId || !order || !order.driverId) {
+      setPesanList([]);
+      return;
+    }
+    const unsub = db.collection("orders").doc(orderId).collection("messages")
+      .orderBy("waktu", "asc")
+      .onSnapshot((snap) => {
+        setPesanList(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      });
+    return () => unsub();
+  }, [orderId, order && order.driverId]);
+
+  const kirimPesanChat = async () => {
+    if (!teksBaru.trim() || !orderId || !user) return;
+    const isi = teksBaru.trim();
+    setTeksBaru("");
+    await db.collection("orders").doc(orderId).collection("messages").add({
+      teks: isi,
+      pengirimId: user.uid,
+      peranPengirim: "passenger",
+      waktu: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  };
 
   const jarakKm = useMemo(() => {
     if (!pickupCoord || !destCoord) return null;
@@ -332,6 +414,8 @@ function App() {
     setDest("");
     setPickupCoord(null);
     setDestCoord(null);
+    setPesanList([]);
+    setTeksBaru("");
   };
 
   const bukaRiwayat = async () => {
@@ -460,6 +544,15 @@ function App() {
               <p className="text-xs text-[#6B7280] mt-2">Tujuan: {dest}</p>
               {order && order.jarakKm && (
                 <p className="text-xs text-[#6B7280]">Jarak: {order.jarakKm} km &middot; Tarif: {rupiah(order.fare)}</p>
+              )}
+
+              {order && order.driverId && (order.status === "matched" || order.status === "onTrip") && (
+                <KotakChat
+                  pesanList={pesanList}
+                  teksBaru={teksBaru}
+                  onTeksBerubah={setTeksBaru}
+                  onKirim={kirimPesanChat}
+                />
               )}
             </div>
           )}
