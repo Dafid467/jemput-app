@@ -183,8 +183,10 @@ function App() {
       .where("status", "==", "searching")
       .onSnapshot((snapshot) => {
         if (!activeTrip && !incomingOrder) {
-          const first = snapshot.docs[0];
-          if (first) setIncomingOrder({ id: first.id, ...first.data() });
+          const first = snapshot.docs
+  .map((d) => ({ id: d.id, ...d.data() }))
+  .find((o) => !(o.declinedBy || []).includes(driverId));
+if (first) setIncomingOrder(first);
         }
       });
     return () => unsub();
