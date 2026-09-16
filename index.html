@@ -290,11 +290,14 @@ function App() {
       setActiveTrip({ ...activeTrip, stage: "onTrip" });
       await db.collection("orders").doc(activeTrip.id).update({ status: "onTrip" });
     } else {
-      await db.collection("orders").doc(activeTrip.id).update({ status: "completed" });
-      await db.collection("drivers").doc(driverId).update({ isOnline: true });
-      setFinishedTrip(activeTrip);
-      setActiveTrip(null);
-    }
+  await db.collection("orders").doc(activeTrip.id).update({ status: "completed" });
+  await db.collection("drivers").doc(driverId).update({
+    isOnline: true,
+    saldo: firebase.firestore.FieldValue.increment(activeTrip.fare),
+  });
+  setFinishedTrip(activeTrip);
+  setActiveTrip(null);
+}
   };
 
   const beriRatingPenumpang = async (bintang) => {
