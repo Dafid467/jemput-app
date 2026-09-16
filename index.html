@@ -283,8 +283,12 @@ function App() {
     setIncomingOrder(null);
   };
 
-  const declineOrder = () => setIncomingOrder(null);
-
+  const declineOrder = async () => {
+  await db.collection("orders").doc(incomingOrder.id).update({
+    declinedBy: firebase.firestore.FieldValue.arrayUnion(driverId),
+  });
+  setIncomingOrder(null);
+};
   const advanceTrip = async () => {
     if (activeTrip.stage === "toPickup") {
       setActiveTrip({ ...activeTrip, stage: "onTrip" });
