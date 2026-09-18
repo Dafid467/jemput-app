@@ -1,69 +1,287 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jemput Dashboard - CEO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+</head>
+<body class="bg-[#F3F6F4]">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
 
-    // Cek: apakah user yang login adalah pemilik dokumen driver ini?
-    function pemilikDriver(driverId) {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/drivers/$(driverId)).data.uid == request.auth.uid;
-    }
+const firebaseConfig = {
+  apiKey: "AIzaSyCSn_E5myNF4uo0O1LJDKj5FHRJiDt0fAc",
+  authDomain: "jemput-93fd0.firebaseapp.com",
+  projectId: "jemput-93fd0",
+  storageBucket: "jemput-93fd0.appspot.com",
+  messagingSenderId: "229069926763",
+  appId: "1:229069926763:web:36ed7a66c6a3e8d561dc2e",
+};
+firebase.initializeApp(firebaseConfig, "dashboardApp");
+const app = firebase.app("dashboardApp");
+const db = app.firestore();
+const auth = app.auth();
 
-    // Cek: apakah driverId BARU yang mau ditulis adalah milik user yang login?
-    function pemilikDriverBaru() {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/drivers/$(request.resource.data.driverId)).data.uid == request.auth.uid;
-    }
+const rupiah = (n) => "Rp" + Number(n).toLocaleString("id-ID");
 
-    // Akun robot GitHub Actions (cocokkan-order.js)
-    function akunSistem() {
-      return request.auth != null &&
-        request.auth.token.email == "sistem@jemput.com";
-    }
+const labelStatus = (s) => ({
+  searching: "Mencari driver",
+  matched: "Driver ditemukan",
+  onTrip: "Dalam perjalanan",
+  completed: "Selesai",
+}[s] || s);
 
-    // Akun CEO buat kelola dashboard (termasuk proses tarik saldo)
-    function akunCEO() {
-      return request.auth != null &&
-        request.auth.token.email == "driver1@jemput.com";
-    }
-
-    match /withdrawals/{docId} {
-      allow read, create, update: if request.auth != null;
-    }
-
-    match /drivers/{driverId} {
-      allow read: if request.auth != null;
-      allow update: if pemilikDriver(driverId) || akunSistem() || akunCEO();
-      allow create, delete: if false;
-    }
-
-    match /orders/{orderId} {
-      allow read: if request.auth != null;
-
-      allow create: if request.auth != null
-        && request.resource.data.passengerId == request.auth.uid
-        && request.resource.data.driverId == null
-        && request.resource.data.status == "searching"
-        && request.resource.data.fare > 0;
-
-      allow update: if akunSistem()
-        || (resource.data.driverId == null
-            && pemilikDriverBaru()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "driverId"]))
-        || (resource.data.driverId != null
-            && pemilikDriver(resource.data.driverId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "ratingForPassenger"]))
-        || (resource.data.passengerId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["ratingForDriver"]));
-
-      allow delete: if false;
-
-      // Pesan chat antara driver & penumpang untuk order ini
-      match /messages/{messageId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null
-          && request.resource.data.pengirimId == request.auth.uid;
-        allow update, delete: if false;
-      }
-    }
-  }
+function isHariIni(ts) {
+  if (!ts || !ts.toDate) return false;
+  const d = ts.toDate();
+  const sekarang = new Date();
+  return d.getDate() === sekarang.getDate() &&
+    d.getMonth() === sekarang.getMonth() &&
+    d.getFullYear() === sekarang.getFullYear();
 }
+
+function KartuStatistik({ label, nilai, warna }) {
+  return (
+    <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+      <p className="text-xs font-bold text-[#6B7280] mb-1">{label}</p>
+      <p className={"text-2xl font-black " + (warna || "text-[#0E2A1E]")}>{nilai}</p>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const login = async () => {
+    setError("");
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (e) {
+      setError("Login gagal: " + e.message);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-[#E4EAE6] p-5">
+        <p className="text-lg font-black text-[#0E2A1E] mb-1">Dashboard CEO</p>
+        <p className="text-xs text-[#6B7280] mb-4">Login pakai akun kamu</p>
+        <p className="text-xs font-bold text-[#6B7280] mb-1">EMAIL</p>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full text-sm border-b border-[#E4EAE6] pb-2 mb-3 outline-none"
+        />
+        <p className="text-xs font-bold text-[#6B7280] mb-1">PASSWORD</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          secureTextEntry
+          style={styles.input}
+        />
+        {error && <p className="text-xs text-[#FF7A1A] mb-3">{error}</p>}
+        <button onClick={login} className="w-full py-3 rounded-xl bg-[#0FA968] text-white font-bold text-sm">
+          Login
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(undefined);
+  const [loading, setLoading] = useState(false);
+  const [orderHariIni, setOrderHariIni] = useState([]);
+  const [driverOnline, setDriverOnline] = useState(0);
+  const [totalDriver, setTotalDriver] = useState(0);
+  const [penarikanPending, setPenarikanPending] = useState([]);
+  const [errMsg, setErrMsg] = useState("");
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  const muatData = async () => {
+    setLoading(true);
+    setErrMsg("");
+    try {
+      const orderSnap = await db.collection("orders").get();
+      const semuaOrder = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const hariIni = semuaOrder.filter((o) => isHariIni(o.waktuDibuat));
+      setOrderHariIni(hariIni);
+
+      const driverSnap = await db.collection("drivers").get();
+      setTotalDriver(driverSnap.size);
+      setDriverOnline(driverSnap.docs.filter((d) => d.data().isOnline).length);
+
+      const wSnap = await db.collection("withdrawals").get();
+      const semuaW = wSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const pending = semuaW
+        .filter((w) => w.status === "pending")
+        .sort((a, b) => {
+          const ta = a.waktuMinta && a.waktuMinta.toMillis ? a.waktuMinta.toMillis() : 0;
+          const tb = b.waktuMinta && b.waktuMinta.toMillis ? b.waktuMinta.toMillis() : 0;
+          return ta - tb;
+        });
+      setPenarikanPending(pending);
+    } catch (err) {
+      setErrMsg("Gagal muat data: " + err.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (user) muatData();
+  }, [user]);
+
+  const prosesPenarikan = async (item, aksi) => {
+    const label = aksi === "selesai" ? "TANDAI SELESAI (sudah ditransfer manual)" : "TOLAK (saldo driver dikembalikan)";
+    if (!window.confirm(`Yakin ${label} untuk penarikan ${rupiah(item.nominal)}?`)) return;
+
+    try {
+      if (aksi === "ditolak") {
+        await db.runTransaction(async (transaction) => {
+          const driverRef = db.collection("drivers").doc(item.driverId);
+          const snapDriver = await transaction.get(driverRef);
+          const saldoSekarang = (snapDriver.data() && snapDriver.data().saldo) || 0;
+          transaction.update(driverRef, { saldo: saldoSekarang + item.nominal });
+          transaction.update(db.collection("withdrawals").doc(item.id), {
+            status: "ditolak",
+            waktuProses: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+        });
+      } else {
+        await db.collection("withdrawals").doc(item.id).update({
+          status: "selesai",
+          waktuProses: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      muatData();
+    } catch (err) {
+      alert("Gagal proses: " + err.message);
+    }
+  };
+
+  const logout = () => auth.signOut();
+
+  if (user === undefined) {
+    return <p className="text-center py-20 text-[#6B7280]">Memuat...</p>;
+  }
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  const selesaiHariIni = orderHariIni.filter((o) => o.status === "completed");
+  const pendapatanHariIni = selesaiHariIni.reduce((total, o) => total + (o.fare || 0), 0);
+
+  return (
+    <div className="min-h-screen py-6 px-3">
+      <div className="max-w-md mx-auto">
+        <div className="bg-[#0E2A1E] text-white rounded-2xl px-5 py-4 mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-lg font-black">Dashboard Jemput</p>
+            <p className="text-[11px] text-white/60">{user.email}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={muatData} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              🔄 Refresh
+            </button>
+            <button onClick={logout} className="px-3 py-1.5 rounded-full text-xs font-bold bg-white/10">
+              Keluar
+            </button>
+          </div>
+        </div>
+
+        {errMsg && <p className="text-xs text-[#FF7A1A] mb-3">{errMsg}</p>}
+        {loading && <p className="text-xs text-[#6B7280] mb-3">Memuat data...</p>}
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <KartuStatistik label="ORDER HARI INI" nilai={orderHariIni.length} />
+          <KartuStatistik label="SELESAI HARI INI" nilai={selesaiHariIni.length} warna="text-[#0FA968]" />
+          <KartuStatistik label="PENDAPATAN HARI INI" nilai={rupiah(pendapatanHariIni)} warna="text-[#0FA968]" />
+          <KartuStatistik label="DRIVER ONLINE" nilai={`${driverOnline} / ${totalDriver}`} />
+        </div>
+
+        <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4 mb-4">
+          <p className="text-sm font-bold text-[#0E2A1E] mb-3">
+            Permintaan Tarik Saldo{penarikanPending.length > 0 ? ` (${penarikanPending.length})` : ""}
+          </p>
+          {penarikanPending.length === 0 ? (
+            <p className="text-xs text-[#6B7280] text-center py-6">Tidak ada permintaan yang menunggu.</p>
+          ) : (
+            <div className="max-h-[420px] overflow-y-auto">
+              {penarikanPending.map((w) => (
+                <div key={w.id} className="border-b border-[#E4EAE6] py-3 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-black text-[#0E2A1E]">{rupiah(w.nominal)}</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF3E8] text-[#FF7A1A]">
+                      Menunggu
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#6B7280] mt-1">Driver ID: {w.driverId}</p>
+                  <p className="text-xs text-[#6B7280]">
+                    {w.metode === "bank" ? "Bank" : "E-wallet"}: {w.namaTujuan} · {w.nomorTujuan}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <button
+                      onClick={() => prosesPenarikan(w, "ditolak")}
+                      className="py-2 rounded-xl border border-[#E4EAE6] font-bold text-xs text-[#6B7280]"
+                    >
+                      Tolak
+                    </button>
+                    <button
+                      onClick={() => prosesPenarikan(w, "selesai")}
+                      className="py-2 rounded-xl bg-[#0FA968] text-white font-bold text-xs"
+                    >
+                      Tandai Selesai
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl border border-[#E4EAE6] p-4">
+          <p className="text-sm font-bold text-[#0E2A1E] mb-3">Order Hari Ini</p>
+          {orderHariIni.length === 0 ? (
+            <p className="text-xs text-[#6B7280] text-center py-6">Belum ada order hari ini.</p>
+          ) : (
+            <div className="max-h-[400px] overflow-y-auto">
+              {orderHariIni.map((o) => (
+                <div key={o.id} className="border-b border-[#E4EAE6] py-2.5 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-[#0E2A1E]">{o.destination}</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F3F6F4] text-[#6B7280]">
+                      {labelStatus(o.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#6B7280] mt-0.5">
+                    {o.jarakKm ? o.jarakKm + " km" : ""} {o.fare ? "· " + rupiah(o.fare) : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
