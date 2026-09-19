@@ -78,23 +78,36 @@ function cariDriverTerdekat(order, driverDocs, sudahDipakai) {
   return driverTerpilih || cadangan;
 }
 
-// Kirim notifikasi push ke HP driver (kalau dia sudah aktifkan notifikasi)
+// Kirim notifikasi push ke HP driver -- ke versi web (fcmToken) dan versi app (fcmTokenNative)
 async function kirimNotifikasiDriver(driverData, order) {
-  if (!driverData.fcmToken) {
-    console.log("Driver belum aktifkan notifikasi, dilewati.");
+  const isiPesan = {
+    notification: {
+      title: "Pesanan baru masuk!",
+      body: `Jemput: ${order.pickup} -> ${order.destination}`,
+    },
+  };
+
+  if (!driverData.fcmToken && !driverData.fcmTokenNative) {
+    console.log("Driver belum aktifkan notifikasi sama sekali, dilewati.");
     return;
   }
-  try {
-    await admin.messaging().send({
-      token: driverData.fcmToken,
-      notification: {
-        title: "Pesanan baru masuk!",
-        body: `Jemput: ${order.pickup} -> ${order.destination}`,
-      },
-    });
-    console.log("Notifikasi terkirim ke driver.");
-  } catch (err) {
-    console.log("Gagal kirim notifikasi: " + err.message);
+
+  if (driverData.fcmToken) {
+    try {
+      await admin.messaging().send({ ...isiPesan, token: driverData.fcmToken });
+      console.log("Notifikasi (versi web) terkirim ke driver.");
+    } catch (err) {
+      console.log("Gagal kirim notifikasi web: " + err.message);
+    }
+  }
+
+  if (driverData.fcmTokenNative) {
+    try {
+      await admin.messaging().send({ ...isiPesan, token: driverData.fcmTokenNative });
+      console.log("Notifikasi (versi app) terkirim ke driver.");
+    } catch (err) {
+      console.log("Gagal kirim notifikasi app: " + err.message);
+    }
   }
 }
 
